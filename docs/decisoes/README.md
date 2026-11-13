@@ -23,3 +23,7 @@ Toda afirmação sobre o Protheus cita a página pública da TOTVS de onde saiu.
 
 - [0008 — Nova tentativa só em leitura, só em falha passageira, com espera crescente](0008-nova-tentativa-so-em-leitura.md)
 - [0009 — O token pode ficar num cache PSR-16, uma entrada por servidor e usuário](0009-token-em-cache-psr16.md)
+
+## M4 — publicação
+
+- [0010 — A primeira versão é 0.1.0, publicada pelo Packagist, com o pacote distribuído conferido no CI](0010-primeira-versao-0-1-0.md)
