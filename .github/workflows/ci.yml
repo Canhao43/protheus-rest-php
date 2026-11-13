@@ -25,6 +25,21 @@ jobs:
           php-version: ${{ matrix.php }}
           coverage: none
 
+      # O Packagist lê o composer.json da tag: um campo errado só apareceria na publicação.
+      - name: Composer válido
+        run: composer validate --strict
+
+      # Quem instala recebe o "git archive" da tag. Testes, docs e CI ficam de fora pelo
+      # .gitattributes, e esta etapa falha se algum voltar ou se o código sumir.
+      - name: Pacote distribuído sem testes nem docs
+        run: |
+          git archive --format=tar HEAD | tar -t > "$RUNNER_TEMP/distribuido.txt"
+          grep -qx 'src/ClienteProtheus.php' "$RUNNER_TEMP/distribuido.txt"
+          if grep -E '^(tests|docs|\.github)/|^(CLAUDE\.md|phpunit\.xml)$' "$RUNNER_TEMP/distribuido.txt"; then
+            echo "Arquivo de desenvolvimento no pacote distribuído."
+            exit 1
+          fi
+
       - name: Dependências
         run: composer update --no-interaction --prefer-dist --no-progress
 
