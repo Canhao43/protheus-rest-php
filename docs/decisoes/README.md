@@ -18,3 +18,8 @@ Toda afirmação sobre o Protheus cita a página pública da TOTVS de onde saiu.
 - [0005 — A coleção é lida por um gerador que só pede a próxima página quando precisa](0005-colecao-como-gerador-preguicoso.md)
 - [0006 — A resposta de coleção é conferida, e o gerador para em vez de girar para sempre](0006-colecao-conferida-contra-laco-infinito.md)
 - [0007 — A consulta usa os parâmetros do guia e recusa o que mudaria a URL por baixo](0007-consulta-com-os-parametros-do-guia.md)
+
+## M3 — resiliência
+
+- [0008 — Nova tentativa só em leitura, só em falha passageira, com espera crescente](0008-nova-tentativa-so-em-leitura.md)
+- [0009 — O token pode ficar num cache PSR-16, uma entrada por servidor e usuário](0009-token-em-cache-psr16.md)
