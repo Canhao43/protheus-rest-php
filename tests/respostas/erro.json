@@ -1,0 +1,18 @@
+{
+    "code": "EXEMPLO-404",
+    "message": "Registro não encontrado.",
+    "detailedMessage": "Nenhum registro com o id 42 no recurso de exemplo.",
+    "helpUrl": "https://exemplo.invalid/ajuda/EXEMPLO-404",
+    "details": [
+        {
+            "code": "EXEMPLO-404-1",
+            "message": "O id informado não existe.",
+            "detailedMessage": "Busca pelo id 42 sem resultado."
+        },
+        {
+            "code": "EXEMPLO-404-2",
+            "message": "Confira a filial informada.",
+            "detailedMessage": "Filial 99 sem cadastro."
+        }
+    ]
+}

@@ -1,0 +1,8 @@
+{
+    "access_token": "ACESSO-FICTICIO-2",
+    "refresh_token": "REFRESH-FICTICIO-2",
+    "scope": "default",
+    "token_type": "Bearer",
+    "expires_in": 3600,
+    "hasMFA": false
+}
