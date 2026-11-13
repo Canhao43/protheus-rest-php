@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Canhao43/protheus-rest-php/actions/workflows/ci.yml/badge.svg)](https://github.com/Canhao43/protheus-rest-php/actions/workflows/ci.yml)
 
-Cliente PHP para a API REST do TOTVS Protheus: faz o login OAuth2, renova o token sozinho, percorre coleções página por página e transforma os erros no formato de API da TOTVS em exceções que dá para tratar.
+Cliente PHP para a API REST do TOTVS Protheus: faz o login OAuth2, renova o token sozinho (e pode guardá-lo entre processos), percorre coleções página por página, tenta de novo quando a leitura falha de um jeito passageiro e transforma os erros no formato de API da TOTVS em exceções que dá para tratar.
 
 > Construído com agentes de IA (Claude Code) e revisado por mim em cada PR, **só a partir da documentação pública da TOTVS**. As regras que os agentes seguem estão em [`CLAUDE.md`](CLAUDE.md).
 
@@ -28,9 +28,41 @@ O login acontece na primeira chamada. Depois disso, o pacote:
 
 - manda `Authorization: Bearer` em cada chamada;
 - renova o token um minuto antes de vencer, pelo `refresh_token`, e só volta a usar a senha se o refresh for recusado;
-- se uma chamada voltar `401`, renova e repete **uma vez**.
+- se uma chamada voltar `401`, renova e repete **uma vez**;
+- se uma **leitura** (`GET`) falhar de um jeito passageiro, espera e tenta de novo (abaixo).
 
 As regras, com o motivo de cada uma, estão em [`docs/decisoes`](docs/decisoes/README.md).
+
+## Token entre processos
+
+Em PHP, cada requisição web e cada job da fila é um processo novo, e cada um faria o próprio login. Com um cache PSR-16, o token vale para todos:
+
+```php
+$protheus = new ClienteProtheus(
+    'https://erp.exemplo.com.br:8080/rest',
+    new Credenciais(getenv('PROTHEUS_USUARIO'), getenv('PROTHEUS_SENHA')),
+    cache: $cache, // no Laravel: app('cache.store'); no Symfony: new Psr16Cache($pool)
+);
+```
+
+- Uma entrada por servidor e usuário. A senha nunca vai para o cache.
+- **O cache guarda tokens:** quem lê o cache entra no Protheus com esse usuário até o token vencer. Use um cache que só a aplicação lê.
+- Se o cache cair, as chamadas seguem; só volta a haver um login por processo.
+
+## Nova tentativa
+
+Uma leitura (`GET`) que fica sem resposta ou volta `429`, `502`, `503` ou `504` é repetida, com espera que dobra a cada vez e um sorteio entre a metade e o teto. Se o servidor mandar `Retry-After`, vale o que ele pediu, até a espera máxima.
+
+```php
+use Canhao43\ProtheusRest\Http\Repeticao;
+
+new ClienteProtheus($url, $credenciais, repeticao: new Repeticao(tentativas: 5, esperaInicialMs: 200, esperaMaximaMs: 10_000));
+new ClienteProtheus($url, $credenciais, repeticao: Repeticao::desligada());
+```
+
+- Padrão: 3 tentativas no total, de 0,5 s a 5 s de espera.
+- `POST`, `PUT`, `PATCH` e `DELETE` nunca são repetidos: uma escrita que caiu no meio pode ter sido gravada, e repetir duplicaria no ERP. A decisão fica com quem chama.
+- `500` não é repetido: é erro do servidor, e repetir dá o mesmo erro.
 
 ## Coleções
 
@@ -94,7 +126,6 @@ try {
 
 ## O que ainda não cobre
 
-- **Cache do token entre processos e nova tentativa em falha de rede:** estão no roteiro abaixo.
 - **Requisição assíncrona (202 com `Location`), HATEOAS e filtro OData montado por objeto:** o guia descreve, mas cada endpoint decide se usa. O `$filter` OData passa como filtro simples: `filtros: ['$filter' => "..."]`.
 - **MFA:** o campo `hasMFA` do login é lido e fica em `Token`, mas o fluxo de MFA não está na página pública do token.
 - **Basic Auth:** existe no Protheus, mas o TDN o descreve como menos seguro que o token.
@@ -112,7 +143,7 @@ Os testes não falam com um Protheus de verdade: usam respostas gravadas no form
 
 - [x] **M1 — Autenticação e erros:** login OAuth2, renovação, 401, erros no padrão TOTVS.
 - [x] **M2 — Coleções:** percorrer páginas (`page`, `pageSize`, `hasNext`, `items`), filtro, ordenação, campos e expansão.
-- [ ] **M3 — Resiliência:** nova tentativa com espera em falha de rede e 5xx de leitura, token em cache entre processos.
+- [x] **M3 — Resiliência:** nova tentativa com espera em falha passageira de leitura, token em cache entre processos.
 - [ ] **M4 — Publicação:** Packagist e exemplos.
 
 ## Desenvolvimento
