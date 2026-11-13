@@ -1,0 +1,35 @@
+{
+    "name": "canhao43/protheus-rest",
+    "description": "Cliente PHP para a API REST do TOTVS Protheus: login OAuth2 com renovação de token, paginação e erros no padrão de API TOTVS.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["protheus", "totvs", "erp", "rest", "api", "oauth2"],
+    "authors": [
+        {
+            "name": "Caio Marques",
+            "homepage": "https://github.com/Canhao43"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "guzzlehttp/guzzle": "^7.9"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.18",
+        "phpunit/phpunit": "^11.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Canhao43\\ProtheusRest\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable"
+}

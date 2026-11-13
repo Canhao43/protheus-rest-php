@@ -1,0 +1,4 @@
+/vendor/
+/.phpunit.cache/
+# Biblioteca: quem fixa as versões é o projeto de quem instala.
+composer.lock
