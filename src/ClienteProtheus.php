@@ -5,10 +5,15 @@ namespace Canhao43\ProtheusRest;
 use Canhao43\ProtheusRest\Autenticacao\Autenticador;
 use Canhao43\ProtheusRest\Autenticacao\RelogioDoSistema;
 use Canhao43\ProtheusRest\Autenticacao\Token;
+use Canhao43\ProtheusRest\Colecoes\Consulta;
+use Canhao43\ProtheusRest\Colecoes\Pagina;
 use Canhao43\ProtheusRest\Erros\ErroDaApi;
+use Canhao43\ProtheusRest\Erros\RespostaInvalida;
 use Canhao43\ProtheusRest\Http\Transporte;
+use Generator;
 use GuzzleHttp\Client;
 use GuzzleHttp\ClientInterface;
+use InvalidArgumentException;
 use Psr\Clock\ClockInterface;
 
 /**
@@ -84,6 +89,72 @@ final class ClienteProtheus
     public function delete(string $caminho, array $query = []): array
     {
         return $this->enviar('DELETE', $caminho, ['query' => $query]);
+    }
+
+    /**
+     * Uma página de uma coleção. Sem tamanho, vale o padrão do endpoint, como o guia manda.
+     */
+    public function pagina(string $caminho, int $numero = 1, ?int $tamanho = null, ?Consulta $consulta = null): Pagina
+    {
+        if ($numero < 1 || ($tamanho !== null && $tamanho < 1)) {
+            throw new InvalidArgumentException('Número e tamanho de página começam em 1.');
+        }
+
+        $query = ($consulta ?? new Consulta)->paraQuery() + ['page' => $numero];
+        if ($tamanho !== null) {
+            $query['pageSize'] = $tamanho;
+        }
+
+        return Pagina::daResposta($numero, $this->get($caminho, $query), $caminho);
+    }
+
+    /**
+     * Todos os itens de uma coleção, página por página, até "hasNext" ser falso.
+     *
+     * Só pede a próxima página quando quem chama chega ao fim da atual: parar no meio do
+     * foreach não busca o resto. Ver docs/decisoes/0005.
+     *
+     * @return Generator<int, mixed>
+     */
+    public function colecao(string $caminho, ?Consulta $consulta = null, ?int $tamanhoDaPagina = null): Generator
+    {
+        // Conferido aqui, fora do gerador: o código de um gerador só roda no primeiro foreach,
+        // e o erro de quem chamou apareceria longe da chamada.
+        if ($tamanhoDaPagina !== null && $tamanhoDaPagina < 1) {
+            throw new InvalidArgumentException('Número e tamanho de página começam em 1.');
+        }
+
+        return $this->percorrer($caminho, $consulta, $tamanhoDaPagina);
+    }
+
+    /**
+     * @return Generator<int, mixed>
+     */
+    private function percorrer(string $caminho, ?Consulta $consulta, ?int $tamanhoDaPagina): Generator
+    {
+        $anterior = null;
+        $numero = 1;
+
+        do {
+            $pagina = $this->pagina($caminho, $numero, $tamanhoDaPagina, $consulta);
+
+            // Duas defesas contra laço infinito com um servidor fora do guia. Ver docs/decisoes/0006.
+            if ($pagina->hasNext && $pagina->items === []) {
+                throw new RespostaInvalida("A página {$numero} de {$caminho} veio vazia, mas diz que há próxima.");
+            }
+            if ($anterior !== null && $pagina->items !== [] && $pagina->items === $anterior->items) {
+                throw new RespostaInvalida("A página {$numero} de {$caminho} repetiu a anterior: o parâmetro page foi ignorado?");
+            }
+
+            // Item por item, e não "yield from": as chaves de cada página recomeçam em 0, e um
+            // iterator_to_array() sobrescreveria a página anterior.
+            foreach ($pagina->items as $item) {
+                yield $item;
+            }
+
+            $anterior = $pagina;
+            $numero++;
+        } while ($pagina->hasNext);
     }
 
     /**

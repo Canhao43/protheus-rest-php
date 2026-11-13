@@ -1,0 +1,8 @@
+{
+    "totvs_transaction_id": 3,
+    "total": 5,
+    "hasNext": false,
+    "items": [
+        { "codigo": "000005", "nome": "Recurso de exemplo 5" }
+    ]
+}
