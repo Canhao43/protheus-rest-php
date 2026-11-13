@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Canhao43/protheus-rest-php/actions/workflows/ci.yml/badge.svg)](https://github.com/Canhao43/protheus-rest-php/actions/workflows/ci.yml)
 
-Cliente PHP para a API REST do TOTVS Protheus: faz o login OAuth2, renova o token sozinho e transforma os erros no formato de API da TOTVS em exceções que dá para tratar.
+Cliente PHP para a API REST do TOTVS Protheus: faz o login OAuth2, renova o token sozinho, percorre coleções página por página e transforma os erros no formato de API da TOTVS em exceções que dá para tratar.
 
 > Construído com agentes de IA (Claude Code) e revisado por mim em cada PR, **só a partir da documentação pública da TOTVS**. As regras que os agentes seguem estão em [`CLAUDE.md`](CLAUDE.md).
 
@@ -31,6 +31,37 @@ O login acontece na primeira chamada. Depois disso, o pacote:
 - se uma chamada voltar `401`, renova e repete **uma vez**.
 
 As regras, com o motivo de cada uma, estão em [`docs/decisoes`](docs/decisoes/README.md).
+
+## Coleções
+
+Endpoints de coleção no padrão TOTVS recebem `page` e `pageSize` e respondem `{"hasNext": ..., "items": [...]}`.
+
+```php
+use Canhao43\ProtheusRest\Colecoes\Consulta;
+
+$consulta = new Consulta(
+    filtros: ['ativo' => 'true'],
+    ordem: ['nome', '-codigo'],      // "-" na frente: decrescente
+    campos: ['codigo', 'nome'],      // só estes campos em cada item
+    expandir: ['enderecos'],
+);
+
+// Todos os itens, uma página por vez: a próxima só é pedida quando a atual acaba.
+foreach ($protheus->colecao('api/exemplo/v1/recursos', $consulta, tamanhoDaPagina: 50) as $item) {
+    // ...
+}
+
+// Uma página só, para tela com "anterior" e "próxima".
+$pagina = $protheus->pagina('api/exemplo/v1/recursos', numero: 2, tamanho: 20, consulta: $consulta);
+$pagina->items;    // os itens desta página
+$pagina->hasNext;  // há próxima?
+$pagina->extras;   // o que mais a API mandou, como "total"
+```
+
+- Sem tamanho, vale o padrão do endpoint.
+- Se o token vencer no meio da leitura, ele é renovado entre uma página e outra.
+- Uma resposta fora do formato, uma página vazia que diz ter próxima ou uma página igual à anterior param a leitura com `RespostaInvalida`, em vez de deixar o `foreach` rodar para sempre.
+- Paginação por número não é uma foto: se registros entrarem ou saírem durante a leitura, um item pode pular ou repetir. Para leitura consistente, ordene por uma chave estável.
 
 ## Erros
 
@@ -63,7 +94,8 @@ try {
 
 ## O que ainda não cobre
 
-- **Paginação e cache do token entre processos:** estão no roteiro abaixo.
+- **Cache do token entre processos e nova tentativa em falha de rede:** estão no roteiro abaixo.
+- **Requisição assíncrona (202 com `Location`), HATEOAS e filtro OData montado por objeto:** o guia descreve, mas cada endpoint decide se usa. O `$filter` OData passa como filtro simples: `filtros: ['$filter' => "..."]`.
 - **MFA:** o campo `hasMFA` do login é lido e fica em `Token`, mas o fluxo de MFA não está na página pública do token.
 - **Basic Auth:** existe no Protheus, mas o TDN o descreve como menos seguro que o token.
 
@@ -79,7 +111,7 @@ Os testes não falam com um Protheus de verdade: usam respostas gravadas no form
 ## Roteiro
 
 - [x] **M1 — Autenticação e erros:** login OAuth2, renovação, 401, erros no padrão TOTVS.
-- [ ] **M2 — Coleções:** percorrer páginas (`page`, `pageSize`, `hasNext`, `items`), ordenação e filtro de campos.
+- [x] **M2 — Coleções:** percorrer páginas (`page`, `pageSize`, `hasNext`, `items`), filtro, ordenação, campos e expansão.
 - [ ] **M3 — Resiliência:** nova tentativa com espera em falha de rede e 5xx de leitura, token em cache entre processos.
 - [ ] **M4 — Publicação:** Packagist e exemplos.
 
