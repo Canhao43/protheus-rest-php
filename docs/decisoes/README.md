@@ -12,3 +12,9 @@ Toda afirmação sobre o Protheus cita a página pública da TOTVS de onde saiu.
 - [0002 — O token é renovado um minuto antes de vencer, pelo refresh primeiro, e um 401 repete a chamada uma vez](0002-ciclo-do-token.md)
 - [0003 — Erros no formato do guia da TOTVS, uma exceção por reação e nenhum segredo na mensagem](0003-erros-no-padrao-totvs.md)
 - [0004 — Guzzle direto e relógio PSR-20](0004-guzzle-e-relogio-psr20.md)
+
+## M2 — coleções
+
+- [0005 — A coleção é lida por um gerador que só pede a próxima página quando precisa](0005-colecao-como-gerador-preguicoso.md)
+- [0006 — A resposta de coleção é conferida, e o gerador para em vez de girar para sempre](0006-colecao-conferida-contra-laco-infinito.md)
+- [0007 — A consulta usa os parâmetros do guia e recusa o que mudaria a URL por baixo](0007-consulta-com-os-parametros-do-guia.md)
