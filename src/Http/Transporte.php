@@ -52,7 +52,8 @@ final class Transporte
         $corpo = (string) $resposta->getBody();
 
         if ($status >= 400) {
-            throw ErroDaApi::daResposta($metodo, $url, $status, $corpo);
+            $retryAfter = $resposta->getHeaderLine('Retry-After');
+            throw ErroDaApi::daResposta($metodo, $url, $status, $corpo, $retryAfter !== '' ? $retryAfter : null);
         }
 
         // 204 do DELETE vem sem corpo, como o guia manda.
