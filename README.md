@@ -1,10 +1,19 @@
 # protheus-rest
 
 [![CI](https://github.com/Canhao43/protheus-rest-php/actions/workflows/ci.yml/badge.svg)](https://github.com/Canhao43/protheus-rest-php/actions/workflows/ci.yml)
+[![Packagist](https://img.shields.io/packagist/v/canhao43/protheus-rest)](https://packagist.org/packages/canhao43/protheus-rest)
 
 Cliente PHP para a API REST do TOTVS Protheus: faz o login OAuth2, renova o token sozinho (e pode guardá-lo entre processos), percorre coleções página por página, tenta de novo quando a leitura falha de um jeito passageiro e transforma os erros no formato de API da TOTVS em exceções que dá para tratar.
 
 > Construído com agentes de IA (Claude Code) e revisado por mim em cada PR, **só a partir da documentação pública da TOTVS**. As regras que os agentes seguem estão em [`CLAUDE.md`](CLAUDE.md).
+
+## Instalação
+
+```bash
+composer require canhao43/protheus-rest
+```
+
+PHP 8.2 ou mais novo. A versão é **0.x**: tudo foi testado com respostas no formato da documentação, mas ainda não contra um Protheus de verdade, e a API pode mudar entre versões menores ([CHANGELOG](CHANGELOG.md)).
 
 ## Uso
 
@@ -48,6 +57,28 @@ $protheus = new ClienteProtheus(
 - Uma entrada por servidor e usuário. A senha nunca vai para o cache.
 - **O cache guarda tokens:** quem lê o cache entra no Protheus com esse usuário até o token vencer. Use um cache que só a aplicação lê.
 - Se o cache cair, as chamadas seguem; só volta a haver um login por processo.
+
+### No Laravel
+
+Um cliente só para a aplicação toda, com o cache do próprio Laravel:
+
+```php
+// config/services.php
+'protheus' => [
+    'url' => env('PROTHEUS_URL'),
+    'usuario' => env('PROTHEUS_USUARIO'),
+    'senha' => env('PROTHEUS_SENHA'),
+],
+
+// app/Providers/AppServiceProvider.php, no register()
+$this->app->singleton(ClienteProtheus::class, fn ($app) => new ClienteProtheus(
+    config('services.protheus.url'),
+    new Credenciais(config('services.protheus.usuario'), config('services.protheus.senha')),
+    cache: $app->make('cache.store'),
+));
+```
+
+Depois, é pedir `ClienteProtheus` no construtor de um controller, job ou comando.
 
 ## Nova tentativa
 
@@ -144,7 +175,9 @@ Os testes não falam com um Protheus de verdade: usam respostas gravadas no form
 - [x] **M1 — Autenticação e erros:** login OAuth2, renovação, 401, erros no padrão TOTVS.
 - [x] **M2 — Coleções:** percorrer páginas (`page`, `pageSize`, `hasNext`, `items`), filtro, ordenação, campos e expansão.
 - [x] **M3 — Resiliência:** nova tentativa com espera em falha passageira de leitura, token em cache entre processos.
-- [ ] **M4 — Publicação:** Packagist e exemplos.
+- [x] **M4 — Publicação:** versão 0.1.0 no Packagist, CHANGELOG, exemplo para Laravel e o pacote distribuído conferido no CI.
+
+O que vem depois: uso relatado contra um Protheus de verdade, para chegar ao 1.0.
 
 ## Desenvolvimento
 
@@ -154,7 +187,7 @@ vendor/bin/phpunit
 vendor/bin/pint --test
 ```
 
-O CI roda os dois em PHP 8.2, 8.3 e 8.4.
+O CI roda os dois em PHP 8.2, 8.3 e 8.4, e confere o `composer.json` e o que vai no pacote distribuído.
 
 ## Licença
 
