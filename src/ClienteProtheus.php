@@ -8,13 +8,16 @@ use Canhao43\ProtheusRest\Autenticacao\Token;
 use Canhao43\ProtheusRest\Colecoes\Consulta;
 use Canhao43\ProtheusRest\Colecoes\Pagina;
 use Canhao43\ProtheusRest\Erros\ErroDaApi;
+use Canhao43\ProtheusRest\Erros\ErroDeConexao;
 use Canhao43\ProtheusRest\Erros\RespostaInvalida;
+use Canhao43\ProtheusRest\Http\Repeticao;
 use Canhao43\ProtheusRest\Http\Transporte;
 use Generator;
 use GuzzleHttp\Client;
 use GuzzleHttp\ClientInterface;
 use InvalidArgumentException;
 use Psr\Clock\ClockInterface;
+use Psr\SimpleCache\CacheInterface;
 
 /**
  * Porta de entrada do pacote: chama a API REST do Protheus com o token já resolvido.
@@ -27,20 +30,34 @@ final class ClienteProtheus
 
     private readonly Autenticador $autenticador;
 
+    private readonly ClockInterface $relogio;
+
+    private readonly Repeticao $repeticao;
+
     /**
      * @param  string  $urlBase  endereço do REST, com o caminho, ex. https://servidor:8080/rest
      * @param  ClientInterface|null  $http  um cliente Guzzle próprio (proxy, certificado, timeouts)
      * @param  ClockInterface|null  $relogio  relógio PSR-20; em teste, um relógio parado
+     * @param  CacheInterface|null  $cache  cache PSR-16 para o token valer entre processos; guarda tokens
+     * @param  Repeticao|null  $repeticao  nova tentativa de leitura em falha passageira; padrão: 3 tentativas
      */
     public function __construct(
         string $urlBase,
         Credenciais $credenciais,
         ?ClientInterface $http = null,
         ?ClockInterface $relogio = null,
+        ?CacheInterface $cache = null,
+        ?Repeticao $repeticao = null,
     ) {
+        $this->relogio = $relogio ?? new RelogioDoSistema;
+        $this->repeticao = $repeticao ?? new Repeticao;
+
         // Sem timeout o Guzzle espera para sempre; um ERP travado não pode travar quem chama.
         $this->transporte = new Transporte($http ?? new Client(['connect_timeout' => 10, 'timeout' => 30]), $urlBase);
-        $this->autenticador = new Autenticador($this->transporte, $credenciais, $relogio ?? new RelogioDoSistema);
+
+        // Um token por servidor e usuário, e nunca a senha na chave. Ver docs/decisoes/0009.
+        $chave = 'protheus_rest.token.'.hash('sha256', rtrim($urlBase, '/')."\n".$credenciais->usuario);
+        $this->autenticador = new Autenticador($this->transporte, $credenciais, $this->relogio, $cache, $chave);
     }
 
     /**
@@ -167,7 +184,7 @@ final class ClienteProtheus
         $token = $this->autenticador->token();
 
         try {
-            return $this->transporte->enviar($metodo, $caminho, $this->comToken($opcoes, $token));
+            return $this->tentar($metodo, $caminho, $this->comToken($opcoes, $token));
         } catch (ErroDaApi $erro) {
             if ($erro->status !== 401) {
                 throw $erro;
@@ -177,7 +194,30 @@ final class ClienteProtheus
         // O TDN diz que token vencido volta 401 "como se não houvesse sido enviado um token".
         // Um 401 também quer dizer que nada foi processado, então repetir uma vez é seguro
         // até num POST. Se o token novo também for recusado, o 401 sobe. Ver docs/decisoes/0002.
-        return $this->transporte->enviar($metodo, $caminho, $this->comToken($opcoes, $this->autenticador->renovar()));
+        return $this->tentar($metodo, $caminho, $this->comToken($opcoes, $this->autenticador->renovar()));
+    }
+
+    /**
+     * Manda a chamada e, se a falha for passageira, espera e manda de novo. Quem decide se
+     * repete e quanto espera é a Repeticao. Ver docs/decisoes/0008.
+     *
+     * @param  array<string, mixed>  $opcoes
+     * @return array<mixed>
+     */
+    private function tentar(string $metodo, string $caminho, array $opcoes): array
+    {
+        for ($tentativa = 1; ; $tentativa++) {
+            try {
+                return $this->transporte->enviar($metodo, $caminho, $opcoes);
+            } catch (ErroDeConexao|ErroDaApi $erro) {
+                $espera = $this->repeticao->esperaDepoisDe($metodo, $erro, $tentativa, $this->relogio->now());
+                if ($espera === null) {
+                    throw $erro;
+                }
+
+                $this->repeticao->dormir($espera);
+            }
+        }
     }
 
     /**

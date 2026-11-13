@@ -10,15 +10,19 @@ namespace Canhao43\ProtheusRest\Erros;
  */
 class ErroDaApi extends ErroDoProtheus
 {
+    /**
+     * @param  string|null  $retryAfter  o cabeçalho Retry-After, como veio, quando veio
+     */
     final public function __construct(
         string $mensagem,
         public readonly int $status,
         public readonly ?MensagemDeErro $mensagemDeErro = null,
+        public readonly ?string $retryAfter = null,
     ) {
         parent::__construct($mensagem, $status);
     }
 
-    public static function daResposta(string $metodo, string $url, int $status, string $corpo): static
+    public static function daResposta(string $metodo, string $url, int $status, string $corpo, ?string $retryAfter = null): static
     {
         $mensagemDeErro = MensagemDeErro::doCorpo($corpo);
 
@@ -29,6 +33,6 @@ class ErroDaApi extends ErroDoProtheus
             $texto .= sprintf(': [%s] %s', $mensagemDeErro->code, $mensagemDeErro->message);
         }
 
-        return new static($texto, $status, $mensagemDeErro);
+        return new static($texto, $status, $mensagemDeErro, $retryAfter);
     }
 }

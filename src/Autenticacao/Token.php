@@ -63,6 +63,43 @@ final class Token
     }
 
     /**
+     * Só tipos simples: o cache pode ser Redis, arquivo ou banco, e objeto serializado
+     * quebraria ao mudar a classe.
+     *
+     * @return array{access_token: string, refresh_token: string|null, expira_em: int, hasMFA: bool}
+     */
+    public function paraCache(): array
+    {
+        return [
+            'access_token' => $this->accessToken,
+            'refresh_token' => $this->refreshToken,
+            'expira_em' => $this->expiraEm->getTimestamp(),
+            'hasMFA' => $this->hasMFA,
+        ];
+    }
+
+    /**
+     * O que veio do cache, ou null se não for um token que este pacote gravou.
+     */
+    public static function doCache(mixed $dados): ?self
+    {
+        if (! is_array($dados)
+            || ! is_string($dados['access_token'] ?? null) || $dados['access_token'] === ''
+            || ! is_int($dados['expira_em'] ?? null)
+            || ! (is_string($dados['refresh_token'] ?? null) || ($dados['refresh_token'] ?? null) === null)
+        ) {
+            return null;
+        }
+
+        return new self(
+            $dados['access_token'],
+            $dados['refresh_token'],
+            (new DateTimeImmutable)->setTimestamp($dados['expira_em']),
+            ($dados['hasMFA'] ?? false) === true,
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function __debugInfo(): array

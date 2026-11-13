@@ -7,10 +7,14 @@ use Canhao43\ProtheusRest\Erros\ErroDaApi;
 use Canhao43\ProtheusRest\Erros\ErroDeAutenticacao;
 use Canhao43\ProtheusRest\Http\Transporte;
 use Psr\Clock\ClockInterface;
+use Psr\SimpleCache\CacheException;
+use Psr\SimpleCache\CacheInterface;
+use RuntimeException;
 
 /**
- * Cuida do ciclo de vida do token: login, renovação antes de vencer e troca quando o
- * servidor recusa. Regras em docs/decisoes/0001 e 0002.
+ * Cuida do ciclo de vida do token: login, renovação antes de vencer, troca quando o
+ * servidor recusa e, se houver cache, o token compartilhado entre processos.
+ * Regras em docs/decisoes/0001, 0002 e 0009.
  *
  * Fonte: TDN, "API para obtenção do token de acesso às API's REST no Protheus"
  * (https://tdn.totvs.com/pages/releaseview.action?pageId=465383509).
@@ -25,14 +29,24 @@ final class Autenticador
      */
     public const MARGEM_EM_SEGUNDOS = 60;
 
+    /**
+     * Quanto o token fica no cache. O TDN dá 24 h ao refresh_token; depois disso a entrada
+     * não serve mais para nada. É só faxina: se o refresh vencer antes, o login cobre.
+     */
+    public const VALIDADE_NO_CACHE_EM_SEGUNDOS = 86400;
+
     private const CAMINHO = 'api/oauth2/v1/token';
 
     private ?Token $token = null;
+
+    private bool $cacheLido = false;
 
     public function __construct(
         private readonly Transporte $transporte,
         private readonly Credenciais $credenciais,
         private readonly ClockInterface $relogio,
+        private readonly ?CacheInterface $cache = null,
+        private readonly string $chaveDoCache = '',
     ) {}
 
     /**
@@ -40,6 +54,11 @@ final class Autenticador
      */
     public function token(): Token
     {
+        if (! $this->cacheLido) {
+            $this->cacheLido = true;
+            $this->token = $this->lerDoCache();
+        }
+
         $limite = $this->relogio->now()->modify('+'.self::MARGEM_EM_SEGUNDOS.' seconds');
 
         if ($this->token !== null && $this->token->valeEm($limite)) {
@@ -52,7 +71,7 @@ final class Autenticador
     /**
      * Troca o token mesmo que ele ainda pareça válido (o servidor recusou com 401).
      * Tenta o refresh_token primeiro, para não trafegar a senha de novo; se ele for
-     * recusado (vence em 24 h), faz o login com usuário e senha.
+     * recusado (vence em 24 h, ou outro processo já o usou), faz o login com usuário e senha.
      */
     public function renovar(): Token
     {
@@ -61,16 +80,16 @@ final class Autenticador
 
         if ($refreshToken !== null) {
             try {
-                return $this->token = $this->pedir(['grant_type' => 'refresh_token', 'refresh_token' => $refreshToken], []);
+                return $this->guardar($this->pedir(['grant_type' => 'refresh_token', 'refresh_token' => $refreshToken], []));
             } catch (ErroDeAutenticacao) {
                 // Refresh vencido ou recusado: o caminho que sobra é o login completo.
             }
         }
 
-        return $this->token = $this->pedir(
+        return $this->guardar($this->pedir(
             ['grant_type' => 'password'],
             ['username' => $this->credenciais->usuario, 'password' => $this->credenciais->senha()],
-        );
+        ));
     }
 
     /**
@@ -87,5 +106,33 @@ final class Autenticador
         }
 
         return Token::daResposta($corpo, $this->relogio->now());
+    }
+
+    private function guardar(Token $token): Token
+    {
+        $this->token = $token;
+
+        if ($this->cache !== null) {
+            try {
+                $this->cache->set($this->chaveDoCache, $token->paraCache(), self::VALIDADE_NO_CACHE_EM_SEGUNDOS);
+            } catch (CacheException|RuntimeException) {
+                // Cache fora do ar custa um login a mais no próximo processo, não esta chamada.
+            }
+        }
+
+        return $token;
+    }
+
+    private function lerDoCache(): ?Token
+    {
+        if ($this->cache === null) {
+            return null;
+        }
+
+        try {
+            return Token::doCache($this->cache->get($this->chaveDoCache));
+        } catch (CacheException|RuntimeException) {
+            return null;
+        }
     }
 }
